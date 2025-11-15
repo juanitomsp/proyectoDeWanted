@@ -1,35 +1,31 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Package, 
   AlertTriangle, 
-  TrendingUp, 
   FileText,
   Camera,
   BarChart3,
   Settings,
   LogOut,
-  Building2,
   MapPin,
-  Users
+  Loader2, // Importado
+  Plus // Importado
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-interface Location {
-  id: string;
-  name: string;
-  location_type: string;
-}
+import { useLocations } from "@/hooks/use-locations"; // Importar el hook
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"; // Importar Dialog
+import { Input } from "@/components/ui/input"; // Importar Input
+import { Label } from "@/components/ui/label"; // Importar Label
 
 interface AlertStats {
   critical: number;
   warning: number;
+  expired: number;
   ok: number;
   total: number;
 }
@@ -37,71 +33,36 @@ interface AlertStats {
 const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [user, setUser] = useState<User | null>(null);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<string>("");
-  const [alerts, setAlerts] = useState<AlertStats>({ critical: 0, warning: 0, ok: 0, total: 0 });
-  const [loading, setLoading] = useState(true);
+  
+  // Usar el hook de locaciones
+  const { 
+    user, 
+    locations, 
+    selectedLocation, 
+    setSelectedLocation, 
+    loading, 
+    refreshLocations 
+  } = useLocations();
 
+  const [alerts, setAlerts] = useState<AlertStats>({ critical: 0, warning: 0, expired: 0, ok: 0, total: 0 });
+  const [loadingAlerts, setLoadingAlerts] = useState(false);
+
+  // State para el modal de añadir local
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newLocationName, setNewLocationName] = useState("");
+  const [newLocationType, setNewLocationType] = useState<string>("restaurant");
+  const [newLocationAddress, setNewLocationAddress] = useState("");
+  const [isSavingLocation, setIsSavingLocation] = useState(false);
+
+  // Cargar alertas cuando selectedLocation cambie
   useEffect(() => {
-    // Check authentication
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate("/auth");
-        return;
-      }
-      setUser(session.user);
-      loadLocations(session.user.id);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
-      if (!session) {
-        navigate("/auth");
-      } else {
-        setUser(session.user);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
-
-  const loadLocations = async (userId: string) => {
-    try {
-      // Get user's locations
-      const { data, error } = await supabase
-        .from("locations")
-        .select(`
-          id,
-          name,
-          location_type,
-          businesses!inner(owner_id)
-        `)
-        .eq("businesses.owner_id", userId)
-        .eq("is_active", true) as { data: Location[] | null; error: any };
-
-      if (error) throw error;
-
-      if (!data || data.length === 0) {
-        // No locations, redirect to onboarding
-        navigate("/onboarding");
-        return;
-      }
-
-      setLocations(data);
-      setSelectedLocation(data[0].id);
-      loadAlerts(data[0].id);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
+    if (selectedLocation) {
+      loadAlerts(selectedLocation);
     }
-  };
+  }, [selectedLocation]);
 
   const loadAlerts = async (locationId: string) => {
+    setLoadingAlerts(true);
     try {
       const { data, error } = await supabase
         .from("batches")
@@ -112,23 +73,31 @@ const Dashboard = () => {
       if (error) throw error;
 
       const stats = data.reduce(
-        (acc, batch) => {
-          acc[batch.status]++;
+        (acc: AlertStats, batch) => {
+          if (batch.status in acc) {
+            acc[batch.status as keyof AlertStats]++;
+          }
           acc.total++;
           return acc;
         },
-        { critical: 0, warning: 0, ok: 0, expired: 0, total: 0 }
+        { critical: 0, warning: 0, expired: 0, ok: 0, total: 0 }
       );
 
       setAlerts(stats);
     } catch (error: any) {
       console.error("Error loading alerts:", error);
+      toast({
+        title: "Error al cargar alertas",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingAlerts(false);
     }
   };
 
   const handleLocationChange = (locationId: string) => {
     setSelectedLocation(locationId);
-    loadAlerts(locationId);
   };
 
   const handleSignOut = async () => {
@@ -136,12 +105,57 @@ const Dashboard = () => {
     navigate("/auth");
   };
 
+  // Lógica para guardar el nuevo local
+  const handleAddLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLocationName) {
+      toast({ title: "Nombre requerido", description: "Por favor, introduce un nombre para el local.", variant: "destructive" });
+      return;
+    }
+    
+    // --- LÍNEA CORREGIDA ---
+    // Comprueba si el usuario existe O si la longitud de locales es 0
+    if (!user || locations.length === 0) {
+      toast({ title: "Error", description: "No se pudo encontrar la información del negocio.", variant: "destructive" });
+      return;
+    }
+
+    const businessId = locations[0].business_id; 
+
+    setIsSavingLocation(true);
+    try {
+      const { error } = await supabase.from("locations").insert({
+        business_id: businessId,
+        name: newLocationName,
+        location_type: newLocationType as any,
+        address: newLocationAddress || null,
+      });
+
+      if (error) throw error;
+
+      toast({ title: "¡Local añadido!", description: `${newLocationName} ha sido creado.` });
+      setIsModalOpen(false);
+      setNewLocationName("");
+      setNewLocationType("restaurant");
+      setNewLocationAddress("");
+      
+      // Refrescar la lista de locales
+      await refreshLocations(); 
+
+    } catch (error: any) {
+      toast({ title: "Error al crear el local", description: error.message, variant: "destructive" });
+    } finally {
+      setIsSavingLocation(false);
+    }
+  };
+
+
   if (loading) {
     return (
       <div className="min-h-screen bg-muted/30 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Cargando...</p>
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Cargando tu cuenta...</p>
         </div>
       </div>
     );
@@ -212,8 +226,8 @@ const Dashboard = () => {
               <CardTitle className="text-sm font-medium text-status-warning-foreground">Alertas de Caducidad</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-status-warning-foreground">{alerts.warning + alerts.critical}</p>
-              <p className="text-xs text-muted-foreground mt-1">lotes próximos a caducar o críticos</p>
+              <p className="text-3xl font-bold text-status-warning-foreground">{alerts.warning + alerts.critical + alerts.expired}</p>
+              <p className="text-xs text-muted-foreground mt-1">lotes próximos a caducar, críticos o caducados</p>
             </CardContent>
           </Card>
           
@@ -225,7 +239,7 @@ const Dashboard = () => {
               <CardTitle className="text-sm font-medium">Inventario</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold">{alerts.total}</p>
+              <p className="text-3xl font-bold">{loadingAlerts ? <Loader2 className="h-8 w-8 animate-spin" /> : alerts.total}</p>
               <p className="text-xs text-muted-foreground mt-1">ver todo el inventario</p>
             </CardContent>
           </Card>
@@ -323,27 +337,66 @@ const Dashboard = () => {
             </CardHeader>
           </Card>
 
-           <Card
-            className="hover:shadow-md transition-shadow cursor-pointer"
-            onClick={() =>
-              toast({
-                title: "Configura tus locales",
-                description: "Gestiona locales y usuarios desde el onboarding inicial por ahora.",
-              })
-            }
-          >
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="bg-muted p-3 rounded-lg">
-                  <Settings className="h-6 w-6 text-muted-foreground" />
+          {/* Tarjeta de Configuración ahora abre el Modal */}
+          <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+            <DialogTrigger asChild>
+              <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <div className="bg-muted p-3 rounded-lg">
+                      <Settings className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <CardTitle>Configuración</CardTitle>
+                      <CardDescription>Añadir/gestionar locales</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+              </Card>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Añadir Nuevo Local</DialogTitle>
+                <DialogDescription>
+                  Añade un nuevo restaurante, bar o tienda a tu negocio.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleAddLocation} className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="location-name">Nombre del Local *</Label>
+                  <Input id="location-name" value={newLocationName} onChange={(e) => setNewLocationName(e.target.value)} required />
                 </div>
-                <div>
-                  <CardTitle>Configuración</CardTitle>
-                  <CardDescription>Locales y usuarios</CardDescription>
+                <div className="space-y-2">
+                  <Label htmlFor="location-type">Tipo de Establecimiento *</Label>
+                  <Select value={newLocationType} onValueChange={setNewLocationType}>
+                    <SelectTrigger id="location-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="restaurant">Restaurante</SelectItem>
+                      <SelectItem value="bar">Bar</SelectItem>
+                      <SelectItem value="cafe">Cafetería</SelectItem>
+                      <SelectItem value="catering">Catering</SelectItem>
+                      <SelectItem value="store">Tienda</SelectItem>
+                      <SelectItem value="other">Otro</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
-            </CardHeader>
-          </Card>
+                <div className="space-y-2">
+                  <Label htmlFor="location-address">Dirección</Label>
+                  <Input id="location-address" value={newLocationAddress} onChange={(e) => setNewLocationAddress(e.target.value)} placeholder="Calle Principal 123" />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" type="button" onClick={() => setIsModalOpen(false)} disabled={isSavingLocation}>Cancelar</Button>
+                  <Button type="submit" disabled={isSavingLocation}>
+                    {isSavingLocation && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Guardar Local
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+
         </div>
 
         {/* Recent Activity Placeholder */}

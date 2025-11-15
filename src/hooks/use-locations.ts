@@ -10,6 +10,7 @@ export interface AccessibleLocation {
   name: string;
   location_type: string;
   business_id: string;
+  address: string | null; // AÑADIDO
 }
 
 export const useLocations = (initialLocationId?: string) => {
@@ -19,6 +20,52 @@ export const useLocations = (initialLocationId?: string) => {
   const [locations, setLocations] = useState<AccessibleLocation[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string>("");
   const [loading, setLoading] = useState(true);
+
+  // Memoize loadLocations para evitar que se re-declare en cada render
+  // y poder usarlo en useEffect de forma segura.
+  const loadLocations = useMemo(() => async (userId: string, preferredLocationId?: string) => {
+    try {
+      // CORRECCIÓN: La consulta ahora filtra por el 'owner_id' del negocio
+      // usando una relación interna (!inner) y aun así selecciona
+      // todos los campos necesarios de 'locations'.
+      const { data, error } = await supabase
+        .from("locations")
+        .select("id, name, location_type, business_id, address, businesses!inner(owner_id)") // AÑADIDO 'address'
+        .eq("businesses.owner_id", userId) // Filtra por el ID del dueño
+        .eq("is_active", true)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        navigate("/onboarding");
+        return;
+      }
+
+      const locationsData = data as AccessibleLocation[];
+      setLocations(locationsData);
+
+      const preferred = preferredLocationId
+        ? locationsData.find((location) => location.id === preferredLocationId)
+        : undefined;
+      
+      // Asegura que selectedLocation tenga un valor válido
+      const newSelectedLocation = preferred ? preferred.id : locationsData[0]?.id || "";
+      setSelectedLocation(newSelectedLocation);
+      
+      return locationsData; // Devuelve los datos para uso inmediato si es necesario
+
+    } catch (error: any) {
+      console.error("Error loading locations", error);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [navigate, toast]); // Dependencias estables
 
   useEffect(() => {
     let isMounted = true;
@@ -41,69 +88,23 @@ export const useLocations = (initialLocationId?: string) => {
     loadSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_, session) => {
+      if (!isMounted) return; // Evitar actualizaciones si el componente está desmontado
       if (!session) {
         navigate("/auth");
         return;
       }
 
-      setUser(session.user);
-      await loadLocations(session.user.id, initialLocationId);
+      if (session.user.id !== user?.id) {
+        setUser(session.user);
+        await loadLocations(session.user.id, initialLocationId);
+      }
     });
 
     return () => {
       isMounted = false;
       subscription.unsubscribe();
     };
-  // We intentionally omit loadLocations from deps to avoid recreating function
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigate, initialLocationId]);
-
-  const loadLocations = async (userId: string, preferredLocationId?: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("locations")
-        .select("id, name, location_type, business_id")
-        .eq("is_active", true)
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-
-      if (!data || data.length === 0) {
-        navigate("/onboarding");
-        return;
-      }
-
-      const locationsData = data as AccessibleLocation[];
-      setLocations(locationsData);
-
-      const preferred = preferredLocationId
-        ? locationsData.find((location) => location.id === preferredLocationId)
-        : undefined;
-      setSelectedLocation(preferred ? preferred.id : locationsData[0].id);
-    } catch (error: any) {
-      console.error("Error loading locations", error);
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!initialLocationId || !locations.length) {
-      return;
-    }
-
-    if (!selectedLocation) {
-      const preferred = locations.find((location) => location.id === initialLocationId);
-      if (preferred) {
-        setSelectedLocation(preferred.id);
-      }
-    }
-  }, [initialLocationId, locations, selectedLocation]);
+  }, [navigate, initialLocationId, loadLocations, user?.id]); // Incluir loadLocations
 
   const selectedLocationData = useMemo(
     () => locations.find((location) => location.id === selectedLocation) || null,
@@ -112,6 +113,7 @@ export const useLocations = (initialLocationId?: string) => {
 
   const refreshLocations = async () => {
     if (user) {
+      setLoading(true);
       await loadLocations(user.id, selectedLocation || initialLocationId);
     }
   };
@@ -122,7 +124,7 @@ export const useLocations = (initialLocationId?: string) => {
     selectedLocation,
     setSelectedLocation,
     loading,
-    refreshLocations,
+    refreshLocations, // Exponer la función de refresco
     selectedLocationData,
   };
 };

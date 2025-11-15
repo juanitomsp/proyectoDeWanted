@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertTriangle, Calendar, ChevronLeft, Loader2, PackageX } from "lucide-react"; // Importar ChevronLeft
+import { AlertTriangle, Calendar, ChevronLeft, Loader2, PackageX, Map } from "lucide-react"; // Importar Map
  
 interface AlertBatch {
   id: string;
@@ -177,6 +177,25 @@ const Alerts = () => {
     }
   };
 
+  // NUEVA FUNCIÓN PARA BUSCAR COMEDORES SOCIALES
+  const handleFindDonation = () => {
+    const address = selectedLocationData?.address;
+    let query = "comedores sociales";
+
+    if (address && address.trim() !== "") {
+      query = `comedores sociales cerca de ${encodeURIComponent(address)}`;
+    } else {
+      toast({
+        title: "Dirección no encontrada",
+        description: "Buscando comedores sociales genéricamente. Añade una dirección a tu local en 'Configuración' para búsquedas más precisas.",
+        variant: "default",
+      });
+    }
+
+    const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+    window.open(url, "_blank");
+  };
+
   return (
     <div className="min-h-screen bg-muted/30 py-8">
       <div className="container mx-auto px-4 space-y-6">
@@ -329,7 +348,17 @@ const Alerts = () => {
                             {alertConfig[batch.status].label}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right space-x-2">
+                        <TableCell className="text-right space-y-2 md:space-x-2 md:space-y-0 flex flex-col md:flex-row md:justify-end md:items-center">
+                          {/* BOTÓN AÑADIDO PARA DONAR */}
+                          <Button 
+                            variant="default" 
+                            size="sm" 
+                            className="bg-status-ok hover:bg-status-ok/90"
+                            onClick={handleFindDonation}
+                          >
+                            <Map className="mr-2 h-4 w-4" />
+                            Donar
+                          </Button>
                           <Button variant="outline" size="sm" onClick={() => openExpiryDialog(batch)}>
                             <Calendar className="mr-2 h-4 w-4" />
                             Ajustar fecha
