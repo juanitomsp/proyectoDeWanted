@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation as useRouterLocation } from "react-router-dom";
+import { useNavigate, useLocation as useRouterLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useLocations } from "@/hooks/use-locations";
 import { useToast } from "@/hooks/use-toast";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertCircle, ArrowRightLeft, Loader2, Package, Send, Share, Truck } from "lucide-react";
+import { AlertCircle, ArrowRightLeft, ChevronLeft, Loader2, Package, Send, Share, Truck } from "lucide-react";
 
 interface BatchOption {
   id: string;
@@ -48,6 +48,7 @@ const statusConfig: Record<TransferRow["status"], { label: string; className: st
 
 const Marketplace = () => {
   const routerLocation = useRouterLocation();
+  const navigate = useNavigate();
   const locationState = routerLocation.state as { locationId?: string } | null;
   const { toast } = useToast();
   const { user, locations, selectedLocation, setSelectedLocation } = useLocations(locationState?.locationId);
@@ -315,6 +316,12 @@ const Marketplace = () => {
     <div className="min-h-screen bg-muted/30 py-8">
       <div className="container mx-auto px-4 space-y-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex justify-start mb-4">
+                    <Button variant="outline" onClick={() => navigate(-1)}>
+                      <ChevronLeft className="mr-2 h-4 w-4" />
+                      Volver
+                    </Button>
+                  </div>
           <div>
             <h1 className="text-3xl font-bold">Marketplace interno</h1>
             <p className="text-muted-foreground">

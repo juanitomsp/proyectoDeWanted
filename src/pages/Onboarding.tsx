@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Building2, MapPin } from "lucide-react";
+import { Loader2, Building2, MapPin, ChevronLeft } from "lucide-react";
 
 const Onboarding = () => {
   const navigate = useNavigate();
@@ -111,6 +111,12 @@ const Onboarding = () => {
   return (
     <div className="min-h-screen bg-muted/30 flex items-center justify-center p-4">
       <Card className="w-full max-w-lg shadow-lg">
+        <div className="flex justify-start mb-4">
+                  <Button variant="outline" onClick={() => navigate(-1)}>
+                    <ChevronLeft className="mr-2 h-4 w-4" />
+                    Volver
+                  </Button>
+                </div>
         <CardHeader>
           <div className="flex items-center gap-2 text-primary mb-2">
             {step === 1 ? <Building2 className="h-5 w-5" /> : <MapPin className="h-5 w-5" />}

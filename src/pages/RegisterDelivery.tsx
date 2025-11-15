@@ -385,6 +385,12 @@ const RegisterDelivery = () => {
     <div className="min-h-screen bg-muted/30 py-8">
       <div className="container mx-auto px-4">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+          <div className="flex justify-start mb-4">
+          <Button variant="outline" onClick={() => navigate(-1)}>
+            <ChevronLeft className="mr-2 h-4 w-4" />
+            Volver
+          </Button>
+        </div>
           <div>
             <h1 className="text-3xl font-bold">Registrar albarán</h1>
             <p className="text-muted-foreground">

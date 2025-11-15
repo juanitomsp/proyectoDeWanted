@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation as useRouterLocation } from "react-router-dom";
+import { useNavigate, useLocation as useRouterLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useLocations } from "@/hooks/use-locations";
 import { useToast } from "@/hooks/use-toast";
@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, PackageSearch, RefreshCw } from "lucide-react";
+import { ChevronLeft, Loader2, PackageSearch, RefreshCw } from "lucide-react";
 
 interface BatchRow {
   id: string;
@@ -62,6 +62,7 @@ const Inventory = () => {
   const { locations, selectedLocation, setSelectedLocation, loading, selectedLocationData } = useLocations(
     locationState?.locationId
   );
+  const navigate = useNavigate();
   const [batches, setBatches] = useState<BatchRow[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [adjustDialogOpen, setAdjustDialogOpen] = useState(false);
@@ -193,6 +194,12 @@ const Inventory = () => {
     <div className="min-h-screen bg-muted/30 py-8">
       <div className="container mx-auto px-4 space-y-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex justify-start mb-4">
+                    <Button variant="outline" onClick={() => navigate(-1)}>
+                      <ChevronLeft className="mr-2 h-4 w-4" />
+                      Volver
+                    </Button>
+                  </div>
           <div>
             <h1 className="text-3xl font-bold">Inventario</h1>
             <p className="text-muted-foreground">
