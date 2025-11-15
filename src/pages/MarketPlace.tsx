@@ -18,6 +18,7 @@ interface BatchOption {
   remaining_quantity: number;
   unit: string | null;
   expiry_date: string | null;
+  storage_type: "refrigerated" | "frozen" | "dry" | "ambient"; // <-- AÑADE ESTA LÍNEA
   product: {
     id: string;
     name: string;
@@ -82,9 +83,9 @@ const Marketplace = () => {
       const { data, error } = await supabase
         .from("batches")
         .select(
-          `id, batch_number, remaining_quantity, unit, expiry_date,
-           product:product_id ( id, name )`
-        )
+        `id, batch_number, remaining_quantity, unit, expiry_date, storage_type,
+         product:product_id ( id, name )`
+      )
         .eq("location_id", locationId)
         .gt("remaining_quantity", 0)
         .order("expiry_date", { ascending: true, nullsFirst: true });
@@ -110,9 +111,9 @@ const Marketplace = () => {
       const { data, error } = await supabase
         .from("internal_transfers")
         .select(
-          `id, from_location_id, to_location_id, batch_id, product_id, quantity, status, notes, requested_at, processed_at, completed_at,
-           batch:batch_id ( id, batch_number, remaining_quantity, unit, expiry_date, product:product_id ( id, name ), status )`
-        )
+        `id, from_location_id, to_location_id, batch_id, product_id, quantity, status, notes, requested_at, processed_at, completed_at,
+         batch:batch_id ( id, batch_number, remaining_quantity, unit, expiry_date, product:product_id ( id, name ), status, storage_type )`
+      )
         .order("requested_at", { ascending: false });
 
       if (error) throw error;
@@ -291,6 +292,23 @@ const Marketplace = () => {
         const newRemaining = Math.max(0, Number(transfer.batch.remaining_quantity ?? 0) - Number(transfer.quantity));
         await supabase.from("batches").update({ remaining_quantity: newRemaining }).eq("id", transfer.batch.id);
         await loadBatchesForLocation(transfer.from_location_id);
+        const { error: newBatchError } = await supabase.from("batches").insert({
+        location_id: transfer.to_location_id, // El local que recibe
+        product_id: transfer.product_id,
+        batch_number: transfer.batch?.batch_number || null, // Copia el lote (o genera uno nuevo)
+        quantity: transfer.quantity, // La cantidad transferida
+        remaining_quantity: transfer.quantity, // La cantidad transferida
+        unit: transfer.batch?.unit || 'uds',
+        expiry_date: transfer.batch?.expiry_date || null,
+        storage_type: transfer.batch?.storage_type || 'dry',
+        entry_date: new Date().toISOString(),
+        status: transfer.batch?.status || 'ok', // O recalcular el estado
+        notes: `Transferido desde ${getLocationName(transfer.from_location_id)}`,
+        created_by: user.id, // El usuario que completa la transferencia
+});
+
+if (newBatchError) throw newBatchError;
+// --- FIN DEL CÓDIGO NUEVO ---
       }
 
       toast({
@@ -525,7 +543,7 @@ const Marketplace = () => {
                         {new Date(transfer.requested_at).toLocaleString("es-ES")}
                       </TableCell>
                       <TableCell className="text-right space-x-2">
-                        {transfer.status === "pending" && isManagerOf(transfer.from_location_id) && (
+                        {transfer.status === "pending" && selectedLocation === transfer.to_location_id &&  (
                           <>
                             <Button size="sm" variant="outline" onClick={() => updateTransferStatus(transfer, "accepted")}
                               disabled={submitting}
@@ -539,7 +557,7 @@ const Marketplace = () => {
                             </Button>
                           </>
                         )}
-                        {transfer.status === "accepted" && isManagerOf(transfer.from_location_id) && (
+                        {transfer.status === "accepted" && selectedLocation === transfer.from_location_id &&  (
                           <Button size="sm" onClick={() => updateTransferStatus(transfer, "completed")}
                             disabled={submitting}
                           >
